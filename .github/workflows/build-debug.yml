@@ -1,7 +1,7 @@
 name: 🏗️ 构建 Debug APK
 
 on:
-  push:
+ # push:
  #   branches: [ master ]
  #   paths:
  #     - 'lyrico-app/**'
