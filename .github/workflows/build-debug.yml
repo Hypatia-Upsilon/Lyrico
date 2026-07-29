@@ -2,17 +2,17 @@ name: 🏗️ 构建 Debug APK
 
 on:
   push:
-    branches: [ master ]
-    paths:
-      - 'lyrico-app/**'
-      - 'lyrico-audiotag/**'
-      - 'lyrico-lyrics/**'
-      - 'gradle/**'
-      - 'build.gradle'
-      - 'settings.gradle'
-      - 'gradle.properties'
-      - 'gradlew'
-      - '.github/workflows/build-debug.yml'
+ #   branches: [ master ]
+ #   paths:
+ #     - 'lyrico-app/**'
+ #     - 'lyrico-audiotag/**'
+ #     - 'lyrico-lyrics/**'
+ #     - 'gradle/**'
+ #     - 'build.gradle'
+ #     - 'settings.gradle'
+ #     - 'gradle.properties'
+ #     - 'gradlew'
+ #     - '.github/workflows/build-debug.yml'
   workflow_dispatch:
 
 concurrency:
