@@ -61,7 +61,7 @@ jobs:
           
           # C. 遍历 release 目录下所有未签名的 APK 并进行签名
           # 由于您开启了 ABI Splits，这会循环签名生成的所有分包 APK
-          find app/build/outputs/apk/release -name "*-unsigned.apk" | while read -r apk; do
+          find lyrico-app/build/outputs/apk/release -name "*-unsigned.apk" | while read -r apk; do
             signed_apk="${apk%-unsigned.apk}-signed.apk"
             echo "Signing $apk -> $signed_apk"
             "$APKSIGNER" sign --ks "$RUNNER_TEMP/keystore.jks" \
@@ -80,4 +80,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apks-signed
-          path: "app/build/outputs/apk/release/**/*-signed.apk"
+          path: "lyrico-app/build/outputs/apk/release/**/*-signed.apk"
