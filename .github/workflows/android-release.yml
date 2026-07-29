@@ -1,0 +1,83 @@
+name: Android Manual Release Build
+
+on:
+  workflow_dispatch: # 仅限手动触发
+
+jobs:
+  build:
+    name: Build & Sign Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 拉取代码 (GitHub 官方组件)
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. 设置 Java 环境 (GitHub 官方组件)
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # 3. 设置 Gradle 环境及缓存 (Gradle 官方组件)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # 4. 赋予执行权限
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      # 5. 自动接受 Android SDK 协议
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      # 6. 运行本地测试
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+
+      # 7. 构建 Release 版本的 APK (此时会输出未签名的 APK)
+      - name: Build Release APKs
+        run: ./gradlew assembleRelease
+
+      # 8. 使用系统预装的 Android 官方 apksigner 进行签名 (无第三方依赖)
+      # 为了安全性，Secrets 全部通过 env 块注入，避免在 run 脚本中直接硬编码拼接
+      - name: Sign Release APKs with Official apksigner
+        env:
+          SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # A. 将 Base64 的 Keystore 写入运行器临时目录
+          echo "$SIGNING_KEY" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+          
+          # B. 动态查找系统预装的最新的官方 apksigner 路径
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -r | head -n 1)
+          echo "Using official apksigner: $APKSIGNER"
+          
+          # C. 遍历 release 目录下所有未签名的 APK 并进行签名
+          # 由于您开启了 ABI Splits，这会循环签名生成的所有分包 APK
+          find app/build/outputs/apk/release -name "*-unsigned.apk" | while read -r apk; do
+            signed_apk="${apk%-unsigned.apk}-signed.apk"
+            echo "Signing $apk -> $signed_apk"
+            "$APKSIGNER" sign --ks "$RUNNER_TEMP/keystore.jks" \
+              --ks-key-alias "$ALIAS" \
+              --ks-pass pass:"$KEY_STORE_PASSWORD" \
+              --key-pass pass:"$KEY_PASSWORD" \
+              --out "$signed_apk" \
+              "$apk"
+          done
+          
+          # D. 删除临时解密出的 keystore 证书以确保安全性
+          rm -f "$RUNNER_TEMP/keystore.jks"
+
+      # 9. 收集并上传签名后的 Release APKs 产物 (GitHub 官方组件)
+      - name: Upload Signed APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apks-signed
+          path: "app/build/outputs/apk/release/**/*-signed.apk"
