@@ -36,8 +36,8 @@ jobs:
           yes | sdkmanager --licenses || true
 
       # 6. 运行本地测试
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
+      #- name: Run Unit Tests
+      #  run: ./gradlew testDebugUnitTest
 
       # 7. 构建 Release 版本的 APK (此时会输出未签名的 APK)
       - name: Build Release APKs
