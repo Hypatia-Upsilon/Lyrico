@@ -6,12 +6,15 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -22,22 +25,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lonx.lyrico.BuildConfig
 import com.lonx.lyrico.R
 import com.lonx.lyrico.data.model.ArtistSeparator
 import com.lonx.lyrico.data.model.ConversionMode
+import com.lonx.lyrico.data.model.FloatingBarEffect
 import com.lonx.lyrico.data.model.SearchSourceTabStyle
 import com.lonx.lyrico.data.model.lyrics.LyricFormat
 import com.lonx.lyrico.data.model.lyrics.visibleLyricLineTracks
@@ -66,10 +72,15 @@ import com.ramcosta.composedestinations.generated.destinations.QuickjsTestDestin
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import com.lonx.lyrico.ui.components.library.LibraryBlurredBar
+import com.lonx.lyrico.ui.components.library.rememberBlurBackdrop
+import com.lonx.lyrico.ui.components.scaffoldTopAppBarInsetsPadding
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -104,9 +115,9 @@ fun SettingsScreen(
     navigator: DestinationsNavigator
 ) {
     val settingsViewModel: SettingsViewModel = koinViewModel()
-    val settingsUiState by settingsViewModel.uiState.collectAsState()
+    val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
     val folderViewModel: FolderManagerViewModel = koinViewModel()
-    val folderUiState by folderViewModel.uiState.collectAsState()
+    val folderUiState by folderViewModel.uiState.collectAsStateWithLifecycle()
 
     val lyricFormat = settingsUiState.lyricFormat
     val artistSeparator = settingsUiState.separator
@@ -114,6 +125,9 @@ fun SettingsScreen(
     val lyricLineOrder = settingsUiState.lyricLineOrder
     val themeMode = settingsUiState.themeMode
     val monetEnable = settingsUiState.monetEnable
+    val floatingBottomBarEnabled = settingsUiState.floatingBottomBarEnabled
+    val barBlurEnabled = settingsUiState.barBlurEnabled
+    val floatingBarEffect = settingsUiState.floatingBarEffect
     val currentKeyColor = settingsUiState.keyColor
     val translationEnabled = settingsUiState.translationEnabled
     val onlyTranslationIfAvailable = settingsUiState.onlyTranslationIfAvailable
@@ -137,6 +151,13 @@ fun SettingsScreen(
     val showClearCacheDialog = remember { mutableStateOf(false) }
     val showLyricLineOrderSheet = remember { mutableStateOf(false) }
     val showRgTargetDialog = remember { mutableStateOf(false) }
+    val monetVisibilityState = remember(settingsUiState.isInitialized) {
+        MutableTransitionState(monetEnable)
+    }
+
+    LaunchedEffect(monetEnable) {
+        monetVisibilityState.targetState = monetEnable
+    }
 
     val themeModeItems = ThemeMode.entries.map { stringResource(it.labelRes) }
     val selectedThemeModeIndex =
@@ -151,6 +172,8 @@ fun SettingsScreen(
     val searchSourceTabStyleItems = SearchSourceTabStyle.entries.map { stringResource(it.labelRes) }
     val selectedSearchSourceTabStyleIndex =
         SearchSourceTabStyle.entries.indexOf(searchSourceTabStyle).coerceAtLeast(0)
+
+    val floatingBarEffectItems = FloatingBarEffect.entries.map { stringResource(it.labelRes) }
 
     val context = LocalContext.current
 
@@ -236,24 +259,44 @@ fun SettingsScreen(
         }
     }
     val topAppBarScrollBehavior = MiuixScrollBehavior()
+    val topBarBackdrop = rememberBlurBackdrop(enableBlur = barBlurEnabled)
     Scaffold(
         topBar = {
-            SmallTopAppBar(
-                title = stringResource(R.string.settings_title),
-                navigationIcon = {
-                    IconButton(
-                        onClick = { navigator.popBackStack() }
-                    ) {
-                        Icon(
-                            MiuixIcons.Back,
-                            contentDescription = stringResource(R.string.action_back)
-                        )
-                    }
-                },
-                scrollBehavior = topAppBarScrollBehavior
-            )
+            LibraryBlurredBar(
+                backdrop = topBarBackdrop,
+                modifier = Modifier.scaffoldTopAppBarInsetsPadding(),
+            ) {
+                SmallTopAppBar(
+                    title = stringResource(R.string.settings_title),
+                    color = if (topBarBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
+                    defaultWindowInsetsPadding = false,
+                    navigationIcon = {
+                        IconButton(
+                            onClick = { navigator.popBackStack() }
+                        ) {
+                            Icon(
+                                MiuixIcons.Back,
+                                contentDescription = stringResource(R.string.action_back)
+                            )
+                        }
+                    },
+                    scrollBehavior = topAppBarScrollBehavior,
+                )
+            }
         }
     ) { paddingValues ->
+        if (!settingsUiState.isInitialized) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(size = 32.dp)
+            }
+            return@Scaffold
+        }
+
         WindowDialog(
             title = stringResource(R.string.clear_cache),
             show = showClearCacheDialog.value,
@@ -311,6 +354,17 @@ fun SettingsScreen(
                 onLineOrderChange = settingsViewModel::setLyricLineOrder
             )
         }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (topBarBackdrop != null) {
+                        Modifier.layerBackdrop(topBarBackdrop)
+                    } else {
+                        Modifier
+                    }
+                ),
+        ) {
         LazyColumn(
             modifier = Modifier
                 .scrollEndHaptic()
@@ -335,13 +389,37 @@ fun SettingsScreen(
                         }
                     )
                     SwitchPreference(
+                        title = stringResource(R.string.bar_blur),
+                        summary = stringResource(R.string.bar_blur_summary),
+                        checked = barBlurEnabled,
+                        onCheckedChange = settingsViewModel::setBarBlurEnabled,
+                    )
+                    SwitchPreference(
+                        title = stringResource(R.string.floating_bottom_bar),
+                        summary = stringResource(R.string.floating_bottom_bar_summary),
+                        checked = floatingBottomBarEnabled,
+                        onCheckedChange = { settingsViewModel.setFloatingBottomBarEnabled(it) }
+                    )
+                    AnimatedVisibility(visible = floatingBottomBarEnabled) {
+                        WindowDropdownPreference(
+                            title = stringResource(R.string.floating_bar_effect),
+                            items = floatingBarEffectItems,
+                            selectedIndex = floatingBarEffect.ordinal,
+                            onSelectedIndexChange = { index ->
+                                settingsViewModel.setFloatingBarEffect(
+                                    FloatingBarEffect.entries[index]
+                                )
+                            },
+                        )
+                    }
+                    SwitchPreference(
                         title = stringResource(R.string.monet),
                         checked = monetEnable,
                         onCheckedChange = {
                             settingsViewModel.setMonetEnable(!monetEnable)
                         }
                     )
-                    AnimatedVisibility(visible = (monetEnable)) {
+                    AnimatedVisibility(visibleState = monetVisibilityState) {
                         val currentSelectedIndex = KeyColors.indexOf(currentKeyColor).let {
                             if (it == -1) 0 else it
                         }
@@ -447,6 +525,15 @@ fun SettingsScreen(
                             settingsViewModel.setSearchPageSize(tempSearchPageSize.intValue)
                         }
                     )
+                    WindowDropdownPreference(
+                        title = stringResource(R.string.artist_separator),
+                        summary = stringResource(R.string.artist_separator_hint),
+                        items = artistSeparatorItems,
+                        selectedIndex = selectedArtistSeparatorIndex,
+                        onSelectedIndexChange = { index ->
+                            settingsViewModel.setSeparator(artistSeparators[index])
+                        }
+                    )
                     SwitchPreference(
                         title = stringResource(R.string.show_all_search_result_fields),
                         summary = stringResource(R.string.show_all_search_result_fields_summary),
@@ -518,15 +605,6 @@ fun SettingsScreen(
                         title = stringResource(R.string.non_lyrics_cleanup_rules_title),
                         summary = stringResource(R.string.non_lyrics_cleanup_rules_summary),
                         onClick = { navigator.navigate(LyricsCleanupRulesDestination()) }
-                    )
-                    WindowDropdownPreference(
-                        title = stringResource(R.string.artist_separator),
-                        summary = stringResource(R.string.artist_separator_hint),
-                        items = artistSeparatorItems,
-                        selectedIndex = selectedArtistSeparatorIndex,
-                        onSelectedIndexChange = { index ->
-                            settingsViewModel.setSeparator(artistSeparators[index])
-                        }
                     )
                     ArrowPreference(
                         title = stringResource(R.string.artist_split_settings_title),
@@ -622,6 +700,7 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
         }
     }
 }

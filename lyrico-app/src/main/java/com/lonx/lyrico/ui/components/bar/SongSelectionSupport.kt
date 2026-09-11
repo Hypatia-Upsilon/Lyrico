@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,6 +36,7 @@ import com.lonx.lyrico.ui.components.scaffoldTopAppBarInsetsPadding
 import com.lonx.lyrico.viewmodel.BatchExportViewModel
 import com.lonx.lyrico.viewmodel.BatchLyricsFormatViewModel
 import com.lonx.lyrico.viewmodel.BatchMatchViewModel
+import com.lonx.lyrico.viewmodel.BatchMatchType
 import com.lonx.lyrico.viewmodel.BatchReplayGainViewModel
 import com.ramcosta.composedestinations.generated.destinations.BatchEditDestination
 import com.ramcosta.composedestinations.generated.destinations.BatchRenameDestination
@@ -56,6 +58,8 @@ fun SongSelectionTopAppBar(
     songs: List<SongEntity>,
     selectedSongUris: Set<String>,
     scrollBehavior: ScrollBehavior,
+    color: Color = Color.Unspecified,
+    applyInsets: Boolean = true,
     onSelectAll: (List<SongEntity>) -> Unit,
     onDeselectAll: () -> Unit,
     onClose: () -> Unit
@@ -67,7 +71,12 @@ fun SongSelectionTopAppBar(
 
         SmallTopAppBar(
             title = "",
-            modifier = Modifier.scaffoldTopAppBarInsetsPadding(),
+            color = color,
+            modifier = if (applyInsets) {
+                Modifier.scaffoldTopAppBarInsetsPadding()
+            } else {
+                Modifier
+            },
             scrollBehavior = scrollBehavior,
             defaultWindowInsetsPadding = false,
             navigationIcon = {
@@ -173,6 +182,7 @@ fun BoxScope.SongBatchSelectionActions(
 
     BatchMatchConfigBottomSheet(
         show = batchMatchUiState.showBatchConfigDialog,
+        matchType = batchMatchUiState.matchType,
         initialConfig = batchMatchConfig,
         onDismissRequest = { config ->
             batchMatchViewModel.saveBatchMatchConfig(config)
@@ -349,12 +359,34 @@ fun BoxScope.SongBatchSelectionActions(
         )
 
         FabMenuItem(
-            label = stringResource(R.string.action_batch_match),
+            label = stringResource(R.string.action_batch_match_cover),
             icon = MiuixIcons.Edit,
             onClick = {
                 onExpandedChange(false)
                 if (onSetSelectionUris()) {
-                    batchMatchViewModel.openBatchMatchConfig()
+                    batchMatchViewModel.openBatchMatchConfig(BatchMatchType.COVER)
+                }
+            }
+        )
+
+        FabMenuItem(
+            label = stringResource(R.string.action_batch_match_lyrics),
+            icon = MiuixIcons.Edit,
+            onClick = {
+                onExpandedChange(false)
+                if (onSetSelectionUris()) {
+                    batchMatchViewModel.openBatchMatchConfig(BatchMatchType.LYRICS)
+                }
+            }
+        )
+
+        FabMenuItem(
+            label = stringResource(R.string.action_batch_match_metadata),
+            icon = MiuixIcons.Edit,
+            onClick = {
+                onExpandedChange(false)
+                if (onSetSelectionUris()) {
+                    batchMatchViewModel.openBatchMatchConfig(BatchMatchType.METADATA)
                 }
             }
         )

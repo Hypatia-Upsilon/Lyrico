@@ -11,6 +11,7 @@ import com.lonx.lyrico.data.model.log.AppLogType
 import com.lonx.lyrico.data.model.ArtistSeparator
 import com.lonx.lyrico.data.model.cache.CacheCategory
 import com.lonx.lyrico.data.model.ConversionMode
+import com.lonx.lyrico.data.model.FloatingBarEffect
 import com.lonx.lyrico.data.model.lyrics.LyricFormat
 import com.lonx.lyrico.data.model.lyrics.LyricLineTrack
 import com.lonx.lyrico.data.model.lyrics.LyricsProcessingOptions
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 
 data class SettingsUiState(
+    val isInitialized: Boolean = false,
     val lyricFormat: LyricFormat = LyricFormat.VERBATIM_LRC,
     val separator: ArtistSeparator = ArtistSeparator.SLASH,
     val romaEnabled: Boolean = false,
@@ -50,6 +52,9 @@ data class SettingsUiState(
     val showAllSearchResultFields: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.AUTO,
     val monetEnable: Boolean = false,
+    val floatingBottomBarEnabled: Boolean = true,
+    val barBlurEnabled: Boolean = false,
+    val floatingBarEffect: FloatingBarEffect = FloatingBarEffect.NONE,
     val keyColor: KeyColor = KeyColors[1],
     val onlyTranslationIfAvailable: Boolean = false,
     val removeEmptyLines: Boolean = true,
@@ -84,23 +89,42 @@ class SettingsViewModel(
         val ignoreShortAudio: Boolean,
         val lyricsTagLineKeywords: List<String>,
         val metadataFieldRules: List<PluginMetadataFieldWriteRule>,
-        val replayGainTargetLoudness: Double
+        val replayGainTargetLoudness: Double,
+        val floatingBottomBarEnabled: Boolean,
+        val barBlurEnabled: Boolean,
+        val floatingBarEffect: FloatingBarEffect
+    )
+
+    private data class VisualSettingsState(
+        val floatingBottomBarEnabled: Boolean,
+        val barBlurEnabled: Boolean,
+        val floatingBarEffect: FloatingBarEffect,
     )
 
     private data class SettingsTailState(
         val ignoreShortAudio: Boolean,
         val lyricsTagLineKeywords: List<String>,
         val metadataFieldRules: List<PluginMetadataFieldWriteRule>,
-        val replayGainTargetLoudness: Double
+        val replayGainTargetLoudness: Double,
+        val visual: VisualSettingsState
     )
+
+    private val visualSettingsState = combine(
+        settingsRepository.floatingBottomBarEnabled,
+        settingsRepository.barBlurEnabled,
+        settingsRepository.floatingBarEffect,
+    ) { floatingBar, barBlur, floatingBarEffect ->
+        VisualSettingsState(floatingBar, barBlur, floatingBarEffect)
+    }
 
     private val settingsTailState = combine(
         settingsRepository.ignoreShortAudio,
         settingsRepository.lyricsTagLineKeywords,
         settingsRepository.metadataFieldWriteRules,
-        settingsRepository.replayGainTargetLoudness
-    ) { ignoreShort, lyricsTagLineKeywords, metadataFieldRules, rgTargetLoudness ->
-        SettingsTailState(ignoreShort, lyricsTagLineKeywords, metadataFieldRules, rgTargetLoudness)
+        settingsRepository.replayGainTargetLoudness,
+        visualSettingsState,
+    ) { ignoreShort, lyricsTagLineKeywords, metadataFieldRules, rgTargetLoudness, visual ->
+        SettingsTailState(ignoreShort, lyricsTagLineKeywords, metadataFieldRules, rgTargetLoudness, visual)
     }
 
     private val settingsBaseState = combine(
@@ -116,7 +140,10 @@ class SettingsViewModel(
             tail.ignoreShortAudio,
             tail.lyricsTagLineKeywords,
             tail.metadataFieldRules,
-            tail.replayGainTargetLoudness
+            tail.replayGainTargetLoudness,
+            tail.visual.floatingBottomBarEnabled,
+            tail.visual.barBlurEnabled,
+            tail.visual.floatingBarEffect,
         )
     }
 
@@ -125,6 +152,7 @@ class SettingsViewModel(
         _categorizedCacheSize
     ) { base, cacheMap ->
         SettingsUiState(
+            isInitialized = true,
             lyricFormat = base.lyric.format,
             romaEnabled = base.lyric.showRomanization,
             lyricLineOrder = base.lyric.normalizedLineOrder,
@@ -138,6 +166,9 @@ class SettingsViewModel(
             themeMode = base.theme.themeMode,
             ignoreShortAudio = base.ignoreShortAudio,
             monetEnable = base.theme.monetEnable,
+            floatingBottomBarEnabled = base.floatingBottomBarEnabled,
+            barBlurEnabled = base.barBlurEnabled,
+            floatingBarEffect = base.floatingBarEffect,
             keyColor = base.theme.keyColor,
             categorizedCacheSize = cacheMap,
             onlyTranslationIfAvailable = base.lyric.onlyTranslationIfAvailable,
@@ -206,6 +237,25 @@ class SettingsViewModel(
             settingsRepository.saveMonetEnable(enabled)
         }
     }
+
+    fun setFloatingBottomBarEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.saveFloatingBottomBarEnabled(enabled)
+        }
+    }
+
+    fun setBarBlurEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.saveBarBlurEnabled(enabled)
+        }
+    }
+
+    fun setFloatingBarEffect(effect: FloatingBarEffect) {
+        viewModelScope.launch {
+            settingsRepository.saveFloatingBarEffect(effect)
+        }
+    }
+
     fun setKeyColor(selectedMode: KeyColor) {
         viewModelScope.launch {
             settingsRepository.saveKeyColor(selectedMode)

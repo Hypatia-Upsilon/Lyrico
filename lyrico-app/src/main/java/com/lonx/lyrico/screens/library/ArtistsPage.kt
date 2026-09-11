@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -32,7 +33,14 @@ import com.lonx.lyrico.ui.components.artist.ArtistListItem
 import com.lonx.lyrico.ui.components.bar.AlphabetSideBar
 import com.lonx.lyrico.ui.components.bar.rememberAlphabetSideBarScrollController
 import com.lonx.lyrico.ui.components.library.LibraryEmptyState
+import com.lonx.lyrico.ui.components.library.LibraryBlurredBar
+import com.lonx.lyrico.ui.components.library.LocalLibraryBarBlurEnabled
+import com.lonx.lyrico.ui.components.library.LocalLibraryBottomContentPadding
+import com.lonx.lyrico.ui.components.library.libraryOverlayInsets
+import com.lonx.lyrico.ui.components.library.libraryScrollbarOverlay
+import com.lonx.lyrico.ui.components.library.rememberBlurBackdrop
 import com.lonx.lyrico.ui.components.scaffoldTopAppBarInsetsPadding
+import com.lonx.lyrico.ui.components.scaffoldContentPadding
 import com.lonx.lyrico.ui.components.scaffoldTopHorizontalPadding
 import com.lonx.lyrico.viewmodel.ArtistLibraryViewModel
 import com.lonx.lyrico.viewmodel.SortOrder
@@ -40,7 +48,7 @@ import com.ramcosta.composedestinations.generated.destinations.ArtistDetailDesti
 import com.ramcosta.composedestinations.generated.destinations.LocalSearchDestination
 import com.ramcosta.composedestinations.generated.destinations.SettingsDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
-import my.nanihadesuka.compose.LazyVerticalGridScrollbar
+import my.nanihadesuka.compose.InternalLazyVerticalGridScrollbar
 import my.nanihadesuka.compose.ScrollbarSelectionMode
 import my.nanihadesuka.compose.ScrollbarSettings
 import org.koin.androidx.compose.koinViewModel
@@ -59,6 +67,7 @@ import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Sort
 import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
@@ -80,6 +89,7 @@ fun ArtistsPage(
     val artistCoverCandidates by viewModel.artistCoverCandidates.collectAsStateWithLifecycle()
     val sortInfo by viewModel.sortInfo.collectAsStateWithLifecycle()
     val topAppBarScrollBehavior = MiuixScrollBehavior()
+    val topBarBackdrop = rememberBlurBackdrop(LocalLibraryBarBlurEnabled.current)
     val gridState = rememberLazyGridState()
     val alphabetScrollController = rememberAlphabetSideBarScrollController(gridState)
 
@@ -109,9 +119,14 @@ fun ArtistsPage(
     )
     Scaffold(
         topBar = {
+            LibraryBlurredBar(
+                backdrop = topBarBackdrop,
+                modifier = Modifier.scaffoldTopAppBarInsetsPadding(),
+            ) {
             SmallTopAppBar(
                 title = stringResource(R.string.artist_list_title, artists.size),
-                modifier = Modifier.scaffoldTopAppBarInsetsPadding(),
+                color = if (topBarBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
+                modifier = Modifier,
                 scrollBehavior = topAppBarScrollBehavior,
                 defaultWindowInsetsPadding = false,
                 navigationIcon = {
@@ -141,102 +156,100 @@ fun ArtistsPage(
                     }
                 }
             )
+            }
         }
     ) { paddingValues ->
         Box(
             modifier = Modifier
-                .padding(scaffoldTopHorizontalPadding(paddingValues))
                 .fillMaxSize()
+                .then(if (topBarBackdrop != null) Modifier.layerBackdrop(topBarBackdrop) else Modifier)
         ) {
             if (artists.isEmpty()) {
-                LibraryEmptyState(
-                    title = stringResource(R.string.empty_artists_title),
-                    summary = stringResource(R.string.empty_library_index_summary),
-                    modifier = Modifier.align(Alignment.Center),
-                    action = {
-                        TextButton(
-                            text = stringResource(R.string.refresh),
-                            onClick = { viewModel.refreshSongs() },
-                            colors = MiuixButtonDefaults.textButtonColorsPrimary()
-                        )
-                    }
-                )
+                Box(
+                    modifier = Modifier
+                        .padding(scaffoldTopHorizontalPadding(paddingValues))
+                        .fillMaxSize()
+                ) {
+                    LibraryEmptyState(
+                        title = stringResource(R.string.empty_artists_title),
+                        summary = stringResource(R.string.empty_library_index_summary),
+                        modifier = Modifier.align(Alignment.Center),
+                        action = {
+                            TextButton(
+                                text = stringResource(R.string.refresh),
+                                onClick = { viewModel.refreshSongs() },
+                                colors = MiuixButtonDefaults.textButtonColorsPrimary()
+                            )
+                        }
+                    )
+                }
             } else {
                 PullToRefresh(
                     isRefreshing = scanState.isScanning,
                     onRefresh = { viewModel.refreshSongs() },
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = paddingValues.calculateTopPadding()),
                     topAppBarScrollBehavior = topAppBarScrollBehavior,
                     refreshTexts = refreshTexts
                 ) {
-                    LazyVerticalGridScrollbar(
-                        state = gridState,
-                        settings = ScrollbarSettings.Default.copy(
-                            enabled = !enableIndex,
-                            alwaysShowScrollbar = !enableIndex,
-                            selectionMode = ScrollbarSelectionMode.Full,
-                            thumbUnselectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                            thumbSelectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions
-                        )
-                    ) {
-                        BoxWithConstraints(
-                            modifier = Modifier.fillMaxSize()
+                    BoxWithConstraints {
+                        val targetColumns = if (maxWidth >= 600.dp) 2 else 1
+
+                        LaunchedEffect(targetColumns) {
+                            artistGridColumns = targetColumns
+                        }
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(artistGridColumns),
+                            modifier = Modifier
+                                .scrollEndHaptic()
+                                .overScrollVertical()
+                                .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
+                                .fillMaxHeight(),
+                            state = gridState,
+                            overscrollEffect = null,
+                            contentPadding = scaffoldContentPadding(
+                                paddingValues = paddingValues,
+                                bottomExtra = LocalLibraryBottomContentPadding.current,
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
-                            val targetColumns = if (maxWidth >= 600.dp) 2 else 1
-
-                            LaunchedEffect(targetColumns) {
-                                artistGridColumns = targetColumns
-                            }
-
-
-                            LazyVerticalGridScrollbar(
-                                state = gridState,
-                                settings = ScrollbarSettings.Default.copy(
-                                    enabled = !enableIndex,
-                                    alwaysShowScrollbar = !enableIndex,
-                                    selectionMode = ScrollbarSelectionMode.Full,
-                                    thumbUnselectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                    thumbSelectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions
-                                )
-                            ) {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(artistGridColumns),
-                                    modifier = Modifier
-                                        .scrollEndHaptic()
-                                        .overScrollVertical()
-                                        .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
-                                        .fillMaxHeight(),
-                                    state = gridState,
-                                    overscrollEffect = null,
-                                    contentPadding = PaddingValues(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                                ) {
-                                    items(
-                                        items = artists,
-                                        key = { it.id }
-                                    ) { artist ->
-                                        ArtistListItem(
-                                            artist = artist,
-                                            coverCandidates = artistCoverCandidates[artist.id]
-                                                .orEmpty()
-                                                .map { candidate ->
-                                                    CoverCandidate(
-                                                        uri = candidate.uri.toUri(),
-                                                        lastUpdate = candidate.lastModified
-                                                    )
-                                                },
-                                            onClick = {
-                                                navigator.navigate(ArtistDetailDestination(artistId = artist.id))
-                                            }
-                                        )
+                            items(
+                                items = artists,
+                                key = { it.id }
+                            ) { artist ->
+                                ArtistListItem(
+                                    artist = artist,
+                                    coverCandidates = artistCoverCandidates[artist.id]
+                                        .orEmpty()
+                                        .map { candidate ->
+                                            CoverCandidate(
+                                                uri = candidate.uri.toUri(),
+                                                lastUpdate = candidate.lastModified
+                                            )
+                                        },
+                                    onClick = {
+                                        navigator.navigate(ArtistDetailDestination(artistId = artist.id))
                                     }
-                                }
+                                )
                             }
-
-
                         }
                     }
+                }
+                if (!enableIndex) {
+                    InternalLazyVerticalGridScrollbar(
+                        state = gridState,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .libraryScrollbarOverlay(paddingValues = paddingValues),
+                        settings = ScrollbarSettings.Default.copy(
+                            alwaysShowScrollbar = true,
+                            selectionMode = ScrollbarSelectionMode.Full,
+                            thumbUnselectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            thumbSelectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        ),
+                    )
                 }
                 if (enableIndex) {
                     AlphabetSideBar(
@@ -246,11 +259,12 @@ fun ArtistsPage(
                         scrollController = alphabetScrollController,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .padding(
-                                top = 16.dp,
-                                bottom = 16.dp
+                            .libraryOverlayInsets(
+                                paddingValues = paddingValues,
+                                extraTop = 16.dp,
+                                extraBottom = 16.dp,
                             )
+                            .fillMaxHeight()
                     )
                 }
             }

@@ -1,9 +1,6 @@
 package com.lonx.lyrico.screens.library
 
 import android.widget.Toast
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,10 +16,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -39,8 +36,15 @@ import com.lonx.lyrico.ui.components.library.AlbumActionBottomSheet
 import com.lonx.lyrico.ui.components.library.AlbumGridItem
 import com.lonx.lyrico.ui.components.library.AlbumReplayGainProgressBottomSheet
 import com.lonx.lyrico.ui.components.library.LibraryEmptyState
+import com.lonx.lyrico.ui.components.library.LibraryBlurredBar
+import com.lonx.lyrico.ui.components.library.LocalLibraryBarBlurEnabled
+import com.lonx.lyrico.ui.components.library.LocalLibraryBottomContentPadding
+import com.lonx.lyrico.ui.components.library.libraryOverlayInsets
+import com.lonx.lyrico.ui.components.library.libraryScrollbarOverlay
 import com.lonx.lyrico.ui.components.library.rememberAlbumGridTextStyle
+import com.lonx.lyrico.ui.components.library.rememberBlurBackdrop
 import com.lonx.lyrico.ui.components.scaffoldTopAppBarInsetsPadding
+import com.lonx.lyrico.ui.components.scaffoldContentPadding
 import com.lonx.lyrico.ui.components.scaffoldTopHorizontalPadding
 import com.lonx.lyrico.viewmodel.AlbumActionsViewModel
 import com.lonx.lyrico.viewmodel.AlbumLibraryViewModel
@@ -49,7 +53,7 @@ import com.ramcosta.composedestinations.generated.destinations.AlbumDetailDestin
 import com.ramcosta.composedestinations.generated.destinations.LocalSearchDestination
 import com.ramcosta.composedestinations.generated.destinations.SettingsDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
-import my.nanihadesuka.compose.LazyVerticalGridScrollbar
+import my.nanihadesuka.compose.InternalLazyVerticalGridScrollbar
 import my.nanihadesuka.compose.ScrollbarSelectionMode
 import my.nanihadesuka.compose.ScrollbarSettings
 import org.koin.androidx.compose.koinViewModel
@@ -62,7 +66,6 @@ import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Search
@@ -70,6 +73,7 @@ import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Sort
 import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -91,6 +95,7 @@ fun AlbumsPage(
     val albumGridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val albumTextStyle = rememberAlbumGridTextStyle(albumGridColumns)
     val topAppBarScrollBehavior = MiuixScrollBehavior()
+    val topBarBackdrop = rememberBlurBackdrop(LocalLibraryBarBlurEnabled.current)
     val gridState = rememberLazyGridState()
     val alphabetScrollController = rememberAlphabetSideBarScrollController(gridState)
     val context = LocalContext.current
@@ -133,9 +138,14 @@ fun AlbumsPage(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
+            LibraryBlurredBar(
+                backdrop = topBarBackdrop,
+                modifier = Modifier.scaffoldTopAppBarInsetsPadding(),
+            ) {
             SmallTopAppBar(
                 title = stringResource(R.string.album_list_title, albums.size),
-                modifier = Modifier.scaffoldTopAppBarInsetsPadding(),
+                color = if (topBarBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
+                modifier = Modifier,
                 scrollBehavior = topAppBarScrollBehavior,
                 defaultWindowInsetsPadding = false,
                 navigationIcon = {
@@ -169,86 +179,108 @@ fun AlbumsPage(
                     }
                 }
             )
+            }
         }
     ) { paddingValues ->
         Box(
             modifier = Modifier
-                .padding(scaffoldTopHorizontalPadding(paddingValues))
                 .fillMaxSize()
+                .then(if (topBarBackdrop != null) Modifier.layerBackdrop(topBarBackdrop) else Modifier)
         ) {
             if (albums.isEmpty()) {
-                LibraryEmptyState(
-                    title = stringResource(R.string.empty_albums_title),
-                    summary = stringResource(R.string.empty_library_index_summary),
-                    modifier = Modifier.align(Alignment.Center),
-                    action = {
-                        TextButton(
-                            text = stringResource(R.string.refresh),
-                            onClick = { viewModel.refreshSongs() },
-                            colors = MiuixButtonDefaults.textButtonColorsPrimary()
-                        )
-                    }
-                )
+                Box(
+                    modifier = Modifier
+                        .padding(scaffoldTopHorizontalPadding(paddingValues))
+                        .fillMaxSize()
+                ) {
+                    LibraryEmptyState(
+                        title = stringResource(R.string.empty_albums_title),
+                        summary = stringResource(R.string.empty_library_index_summary),
+                        modifier = Modifier.align(Alignment.Center),
+                        action = {
+                            TextButton(
+                                text = stringResource(R.string.refresh),
+                                onClick = { viewModel.refreshSongs() },
+                                colors = MiuixButtonDefaults.textButtonColorsPrimary()
+                            )
+                        }
+                    )
+                }
             } else {
                 PullToRefresh(
                     isRefreshing = scanState.isScanning,
                     onRefresh = { viewModel.refreshSongs() },
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = paddingValues.calculateTopPadding() + 12.dp,
+                    ),
                     topAppBarScrollBehavior = topAppBarScrollBehavior,
                     refreshTexts = refreshTexts
                 ) {
-                    LazyVerticalGridScrollbar(
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(albumGridColumns),
                         state = gridState,
-                        settings = ScrollbarSettings.Default.copy(
-                            enabled = !enableIndex,
-                            alwaysShowScrollbar = !enableIndex,
-                            selectionMode = ScrollbarSelectionMode.Full,
-                            thumbUnselectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                            thumbSelectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions
-                        )
+                        modifier = Modifier
+                            .scrollEndHaptic()
+                            .overScrollVertical()
+                            .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
+                            .fillMaxSize(),
+                        contentPadding = scaffoldContentPadding(
+                            paddingValues = paddingValues,
+                            topExtra = 12.dp,
+                            bottomExtra = 12.dp + LocalLibraryBottomContentPadding.current,
+                            horizontalExtra = 12.dp,
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        overscrollEffect = null
                     ) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(albumGridColumns),
-                            state = gridState,
-                            modifier = Modifier
-                                .scrollEndHaptic()
-                                .overScrollVertical()
-                                .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
-                                .fillMaxSize(),
-                            contentPadding = PaddingValues(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            overscrollEffect = null
-                        ) {
-                            items(
-                                items = albums,
-                                key = { it.id }
-                            ) { album ->
-                                AlbumGridItem(
-                                    albumName = album.name,
-                                    summary = buildAlbumSummary(
-                                        songCountText = stringResource(
-                                            R.string.song_count,
-                                            album.songCount
-                                        ),
-                                        year = album.year
+                        items(
+                            items = albums,
+                            key = { it.id }
+                        ) { album ->
+                            AlbumGridItem(
+                                albumName = album.name,
+                                summary = buildAlbumSummary(
+                                    songCountText = stringResource(
+                                        R.string.song_count,
+                                        album.songCount
                                     ),
-                                    coverUri = album.coverSongUri,
-                                    coverLastModified = album.coverSongLastModified,
-                                    titleStyle = albumTextStyle.title,
-                                    summaryStyle = albumTextStyle.summary,
-                                    titleMaxLines = albumTextStyle.titleMaxLines,
-                                    onClick = {
-                                        navigator.navigate(AlbumDetailDestination(albumId = album.id))
-                                    },
-                                    onLongClick = {
-                                        selectedAlbum = album
-                                        showAlbumActionSheet = true
-                                    }
-                                )
-                            }
+                                    year = album.year
+                                ),
+                                coverUri = album.coverSongUri,
+                                coverLastModified = album.coverSongLastModified,
+                                titleStyle = albumTextStyle.title,
+                                summaryStyle = albumTextStyle.summary,
+                                titleMaxLines = albumTextStyle.titleMaxLines,
+                                onClick = {
+                                    navigator.navigate(AlbumDetailDestination(albumId = album.id))
+                                },
+                                onLongClick = {
+                                    selectedAlbum = album
+                                    showAlbumActionSheet = true
+                                }
+                            )
                         }
                     }
+                }
+                if (!enableIndex) {
+                    InternalLazyVerticalGridScrollbar(
+                        state = gridState,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .libraryScrollbarOverlay(
+                                paddingValues = paddingValues,
+                                extraTop = 12.dp,
+                                extraBottom = 12.dp,
+                            ),
+                        settings = ScrollbarSettings.Default.copy(
+                            alwaysShowScrollbar = true,
+                            selectionMode = ScrollbarSelectionMode.Full,
+                            thumbUnselectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            thumbSelectedColor = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        ),
+                    )
                 }
                 if (enableIndex) {
                     AlphabetSideBar(
@@ -258,11 +290,12 @@ fun AlbumsPage(
                         scrollController = alphabetScrollController,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .padding(
-                                top = 16.dp,
-                                bottom = 16.dp
+                            .libraryOverlayInsets(
+                                paddingValues = paddingValues,
+                                extraTop = 16.dp,
+                                extraBottom = 16.dp,
                             )
+                            .fillMaxHeight()
                     )
                 }
             }

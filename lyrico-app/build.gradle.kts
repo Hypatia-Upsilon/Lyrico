@@ -72,6 +72,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
+    // JVM 单元测试中 android.util.Log 调用返回默认值而非抛异常：
+    // PluginJsonParser 解析 metadata 三分支规则时会对非法结构打 warn 日志，单测需覆盖该分支
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -124,6 +129,7 @@ dependencies {
     implementation(libs.miuix.preference.android)
     implementation(libs.miuix.ui.android)
     implementation(libs.miuix.icons.android)
+    implementation(libs.miuix.blur.android)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.reorderable)
