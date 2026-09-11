@@ -43,8 +43,7 @@ jobs:
       - name: Build Release APKs
         run: ./gradlew assembleRelease
 
-      # 8. 使用系统预装的 Android 官方 apksigner 进行签名 (无第三方依赖)
-      # 为了安全性，Secrets 全部通过 env 块注入，避免在 run 脚本中直接硬编码拼接
+      # 8. 使用系统预装的 Android 官方 apksigner 进行签名
       - name: Sign Release APKs with Official apksigner
         env:
           SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -52,32 +51,54 @@ jobs:
           KEY_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -e  # 遇到错误立即中断退出
+
           # A. 将 Base64 的 Keystore 写入运行器临时目录
           echo "$SIGNING_KEY" | base64 -d > "$RUNNER_TEMP/keystore.jks"
-          
+
           # B. 动态查找系统预装的最新的官方 apksigner 路径
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -r | head -n 1)
           echo "Using official apksigner: $APKSIGNER"
-          
-          # C. 遍历 release 目录下所有未签名的 APK 并进行签名
-          # 由于您开启了 ABI Splits，这会循环签名生成的所有分包 APK
-          find lyrico-app/build/outputs/apk/release -name "*-unsigned.apk" | while read -r apk; do
-            signed_apk="${apk%-unsigned.apk}-signed.apk"
-            echo "Signing $apk -> $signed_apk"
+
+          # C. 创建存放签名后 APK 的目标目录
+          OUTPUT_DIR="lyrico-app/build/outputs/apk/release/signed"
+          mkdir -p "$OUTPUT_DIR"
+
+          # 先打印当前 release 目录下实际生成了什么文件（便于调试）
+          echo "=== Files in release directory ==="
+          find lyrico-app/build/outputs/apk/release -maxdepth 2 -type f
+          echo "=================================="
+
+          # D. 查找 release 目录下生成的所有 APK（排除 signed 目录）并签名
+          found_any=false
+          while IFS= read -r apk; do
+            found_any=true
+            filename=$(basename "$apk")
+            # 去掉可能的 -unsigned 后缀，加上 -signed 后缀
+            clean_name="${filename/-unsigned/}"
+            signed_apk="$OUTPUT_DIR/${clean_name%.apk}-signed.apk"
+
+            echo "Signing: $apk -> $signed_apk"
             "$APKSIGNER" sign --ks "$RUNNER_TEMP/keystore.jks" \
               --ks-key-alias "$ALIAS" \
               --ks-pass pass:"$KEY_STORE_PASSWORD" \
               --key-pass pass:"$KEY_PASSWORD" \
               --out "$signed_apk" \
               "$apk"
-          done
-          
-          # D. 删除临时解密出的 keystore 证书以确保安全性
+          done < <(find lyrico-app/build/outputs/apk/release -path "$OUTPUT_DIR" -prune -o -name "*.apk" -print)
+
+          if [ "$found_any" = false ]; then
+            echo "ERROR: No APK files found to sign!"
+            exit 1
+          fi
+
+          # E. 清理临时 keystore
           rm -f "$RUNNER_TEMP/keystore.jks"
 
-      # 9. 收集并上传签名后的 Release APKs 产物 (GitHub 官方组件)
+      # 9. 收集并上传签名后的 Release APKs 产物
       - name: Upload Signed APKs
         uses: actions/upload-artifact@v4
         with:
           name: release-apks-signed
-          path: "lyrico-app/build/outputs/apk/release/**/*-signed.apk"
+          path: lyrico-app/build/outputs/apk/release/signed/*.apk
+          if-no-files-found: error # 如果依然找不到文件，直接使流水线失败报错
