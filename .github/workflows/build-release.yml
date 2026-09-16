@@ -1,18 +1,18 @@
 name: 🏗️ 构建 Release APK
 
 on:
-  push:
-    branches: [ master ]
-    paths:
-      - 'lyrico-app/**'
-      - 'lyrico-audiotag/**'
-      - 'lyrico-lyrics/**'
-      - 'gradle/**'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'gradle.properties'
-      - 'gradlew'
-      - '.github/workflows/build-release.yml'
+#  push:
+#    branches: [ master ]
+#    paths:
+#      - 'lyrico-app/**'
+#      - 'lyrico-audiotag/**'
+#      - 'lyrico-lyrics/**'
+#      - 'gradle/**'
+#      - 'build.gradle.kts'
+#      - 'settings.gradle.kts'
+#      - 'gradle.properties'
+#      - 'gradlew'
+#      - '.github/workflows/build-release.yml'
   workflow_dispatch:
 
 concurrency:
