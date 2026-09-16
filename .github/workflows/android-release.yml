@@ -1,0 +1,104 @@
+name: Android Manual Release Build
+
+on:
+  workflow_dispatch: # 仅限手动触发
+
+jobs:
+  build:
+    name: Build & Sign Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 拉取代码 (GitHub 官方组件)
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. 设置 Java 环境 (GitHub 官方组件)
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # 3. 设置 Gradle 环境及缓存 (Gradle 官方组件)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # 4. 赋予执行权限
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      # 5. 自动接受 Android SDK 协议
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      # 6. 运行本地测试
+      #- name: Run Unit Tests
+      #  run: ./gradlew testDebugUnitTest
+
+      # 7. 构建 Release 版本的 APK (此时会输出未签名的 APK)
+      - name: Build Release APKs
+        run: ./gradlew assembleRelease
+
+      # 8. 使用系统预装的 Android 官方 apksigner 进行签名
+      - name: Sign Release APKs with Official apksigner
+        env:
+          SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e  # 遇到错误立即中断退出
+
+          # A. 将 Base64 的 Keystore 写入运行器临时目录
+          echo "$SIGNING_KEY" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+
+          # B. 动态查找系统预装的最新的官方 apksigner 路径
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -r | head -n 1)
+          echo "Using official apksigner: $APKSIGNER"
+
+          # C. 创建存放签名后 APK 的目标目录
+          OUTPUT_DIR="lyrico-app/build/outputs/apk/release/signed"
+          mkdir -p "$OUTPUT_DIR"
+
+          # 先打印当前 release 目录下实际生成了什么文件（便于调试）
+          echo "=== Files in release directory ==="
+          find lyrico-app/build/outputs/apk/release -maxdepth 2 -type f
+          echo "=================================="
+
+          # D. 查找 release 目录下生成的所有 APK（排除 signed 目录）并签名
+          found_any=false
+          while IFS= read -r apk; do
+            found_any=true
+            filename=$(basename "$apk")
+            # 去掉可能的 -unsigned 后缀，加上 -signed 后缀
+            clean_name="${filename/-unsigned/}"
+            signed_apk="$OUTPUT_DIR/${clean_name%.apk}-signed.apk"
+
+            echo "Signing: $apk -> $signed_apk"
+            "$APKSIGNER" sign --ks "$RUNNER_TEMP/keystore.jks" \
+              --ks-key-alias "$ALIAS" \
+              --ks-pass pass:"$KEY_STORE_PASSWORD" \
+              --key-pass pass:"$KEY_PASSWORD" \
+              --out "$signed_apk" \
+              "$apk"
+          done < <(find lyrico-app/build/outputs/apk/release -path "$OUTPUT_DIR" -prune -o -name "*.apk" -print)
+
+          if [ "$found_any" = false ]; then
+            echo "ERROR: No APK files found to sign!"
+            exit 1
+          fi
+
+          # E. 清理临时 keystore
+          rm -f "$RUNNER_TEMP/keystore.jks"
+
+      # 9. 收集并上传签名后的 Release APKs 产物
+      - name: Upload Signed APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apks-signed
+          path: lyrico-app/build/outputs/apk/release/signed/*.apk
+          if-no-files-found: error # 如果依然找不到文件，直接使流水线失败报错
